@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#13120e">
+<meta name="description" content="Belichtungszeit für ND-Filter umrechnen, mit Bulb-Timer.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<title>ND-Rechner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: Kamera-Top-Display. Einspaltig auf dem Handy, ab Tablet Bedienung links, Ergebnis rechts (sticky). Bewusst nur dunkel, mit roter Nachtsicht-Variante. */
+:root{
+  --bg:#13120e; --panel:#1c1b16; --line:#33302a; --fg:#ece6d5; --muted:#9b947f;
+  --accent:#f0a83a; --accent-ink:#1b1407;
+  --f-display:"Saira Condensed","Arial Narrow",Roboto Condensed,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,Roboto,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+body.night{
+  --bg:#090403; --panel:#120806; --line:#2e120d; --fg:#de5a45; --muted:#86382b;
+  --accent:#d63f28; --accent-ink:#090403;
+}
+[hidden]{display:none!important}
+*,*::before,*::after{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg)}
+body{margin:0}
+body{font-family:var(--f-body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:12px 32px;-webkit-tap-highlight-color:transparent}
+.wrap{max-width:1040px;margin:0 auto;display:grid;gap:14px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+h1{font-family:var(--f-display);font-weight:700;font-size:1.6rem;letter-spacing:.04em;text-transform:uppercase;margin:0}
+h1 span{color:var(--accent)}
+.lbl{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ghost{background:none;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:.8rem;color:var(--muted)}
+.ghost[aria-pressed="true"]{color:var(--accent);border-color:var(--accent)}
+
+.grid{display:grid;gap:14px}
+@media (min-width:760px){.grid{grid-template-columns:1fr 380px;align-items:start}.result{position:sticky;top:12px}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:12px;min-width:0}
+
+/* Basiszeit */
+.speed{display:grid;grid-template-columns:56px 1fr 56px;align-items:center;gap:8px}
+.step{height:56px;border-radius:12px;background:var(--bg);border:1px solid var(--line);font-size:1.6rem;font-family:var(--f-display)}
+.step:active{border-color:var(--accent)}
+.speedval{text-align:center;font-family:var(--f-display);font-weight:600;font-size:3rem;line-height:1;font-variant-numeric:tabular-nums}
+.speedval small{font-size:1.2rem;color:var(--muted);margin-left:4px}
+input[type=range]{width:100%;accent-color:var(--accent);height:28px}
+.scale{display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:.7rem;color:var(--muted)}
+
+/* Filter */
+.chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.chip{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 8px;text-align:left;display:grid;gap:2px;min-height:64px}
+.chip b{font-family:var(--f-display);font-size:1.25rem;font-weight:600;letter-spacing:.02em}
+.chip span{font-family:var(--f-mono);font-size:.7rem;color:var(--muted)}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip[aria-pressed="true"] span{color:var(--accent-ink);opacity:.75}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.custom{display:flex;align-items:center;gap:8px}
+.custom .step{width:44px;height:44px;font-size:1.3rem}
+.cfield{display:flex;align-items:center;gap:4px;font-family:var(--f-mono);font-size:.8rem;color:var(--muted)}
+.cfield input{width:68px;height:44px;text-align:center;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;font-family:var(--f-mono);font-size:1.05rem;font-variant-numeric:tabular-nums}
+.cfield input[aria-invalid="true"]{border-color:#e0533c}
+.custom .clr{color:var(--accent);border-color:var(--accent)}
+.custom .clr:disabled{color:var(--muted);border-color:var(--line);opacity:.5;cursor:default}
+.chip.add{border-style:dashed;color:var(--muted)}
+.chip.add b{color:var(--fg)}
+.chip.mine b{overflow-wrap:anywhere;font-size:1.1rem}
+.editing .chip.mine{border-style:dashed;border-color:var(--accent)}
+.editor,.backup{display:grid;gap:10px;padding:12px;border:1px solid var(--accent);border-radius:12px;background:var(--bg)}
+.backup{border-color:var(--line)}
+.edrow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:440px){.edrow{grid-template-columns:1fr}}
+.editor label{display:grid;gap:4px;font-size:.72rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;font-weight:600;min-width:0}
+.editor input,.backup textarea{width:100%;min-width:0;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;font-family:var(--f-body);font-size:1rem;letter-spacing:0;text-transform:none}
+.editor input{height:44px;padding:0 10px}
+.backup textarea{padding:8px 10px;font-family:var(--f-mono);font-size:.78rem;resize:vertical}
+.edbtns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--panel);font-weight:600}
+.btn.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:#e0533c;border-color:#e0533c;margin-left:auto}
+.chead{display:flex;align-items:center;gap:12px}
+.sw{flex:none;width:52px;height:30px;border-radius:99px;border:1px solid var(--line);background:var(--bg);position:relative;padding:0}
+.sw i{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--muted);transition:transform .15s,background .15s}
+.sw[aria-checked="true"]{background:var(--accent);border-color:var(--accent)}
+.sw[aria-checked="true"] i{transform:translateX(22px);background:var(--accent-ink)}
+#cState{color:var(--accent);margin-left:4px}
+#cRow.off #cState{color:var(--muted)}
+#cRow.off .cfield input{color:var(--muted);text-decoration:line-through}
+.warn{color:var(--accent);font-weight:500}
+@media (prefers-reduced-motion:reduce){.sw i{transition:none}}
+.cerr{font-size:.8rem;color:#e0533c;margin:0;width:100%;text-align:right}
+.note{font-size:.8rem;color:var(--muted);margin:0}
+
+/* Ergebnis */
+.result{border-color:var(--accent)}
+.big{font-family:var(--f-display);font-weight:700;font-size:clamp(3.4rem,15vw,4.6rem);line-height:.95;font-variant-numeric:tabular-nums;color:var(--accent);margin:0;overflow-wrap:anywhere}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:.88rem;margin:0}
+.facts dt{color:var(--muted)}
+.facts dd{margin:0;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);font-family:var(--f-body);font-size:.78rem;font-weight:600}
+.go{height:58px;border-radius:12px;border:0;background:var(--accent);color:var(--accent-ink);font-family:var(--f-display);font-size:1.4rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.go:disabled{opacity:.35;cursor:default}
+
+/* Timer */
+.timer{position:fixed;inset:0;background:var(--bg);z-index:20;display:grid;place-items:center;
+  padding:calc(24px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.tbox{width:min(520px,100%);display:grid;gap:22px;text-align:center}
+.count{font-family:var(--f-display);font-weight:700;font-size:clamp(4.5rem,24vw,9rem);line-height:1;font-variant-numeric:tabular-nums;color:var(--accent)}
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent)}
+.tbtns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tbtns button{height:56px;border-radius:12px;border:1px solid var(--line);background:var(--panel);font-family:var(--f-display);font-size:1.25rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+.tbtns .stop{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.done .count{animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.done .count{animation:none}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>ND<span>·</span>Rechner</h1>
+    <button class="ghost" id="nightBtn" aria-pressed="false">Nachtsicht</button>
+  </header>
+
+  <div class="grid">
+    <div class="grid" style="grid-template-columns:1fr">
+      <section class="panel" aria-labelledby="l1">
+        <p class="lbl" id="l1">Belichtungszeit ohne Filter</p>
+        <div class="speed">
+          <button class="step" id="minus" aria-label="Kürzer">−</button>
+          <div class="speedval" id="speedVal">1/125<small>s</small></div>
+          <button class="step" id="plus" aria-label="Länger">+</button>
+        </div>
+        <input type="range" id="speedRange" min="0" max="54" step="1" aria-label="Belichtungszeit">
+        <div class="scale"><span>1/8000</span><span>1/125</span><span>1 s</span><span>30 s</span></div>
+        <p class="note">Miss ohne Filter, stell die Zeit hier ein, dann Filter aufschrauben.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="l2">
+        <div class="row">
+          <p class="lbl" id="l2">Filter (mehrere möglich)</p>
+          <button class="ghost" id="clearBtn">Alle ab</button>
+        </div>
+
+        <div class="row">
+          <p class="lbl">Meine Gläser</p>
+          <button class="ghost" id="editBtn" aria-pressed="false">Bearbeiten</button>
+        </div>
+        <div class="chips" id="mine"></div>
+
+        <form class="editor" id="editor" hidden novalidate>
+          <p class="lbl" id="edTitle">Neues Glas</p>
+          <div class="edrow">
+            <label>Name<input id="edName" maxlength="16" autocomplete="off" placeholder="z. B. Haida 1000"></label>
+            <label>Stufen oder ND-Zahl<input id="edSt" inputmode="decimal" autocomplete="off" placeholder="10,3 oder 1000"></label>
+          </div>
+          <p class="note">Eingemessene Stufen eintragen. Eine Zahl über 20 gilt als ND-Zahl, 1000 wird also zu 9,97 Stufen.</p>
+          <p class="cerr" id="edErr" hidden></p>
+          <div class="edbtns">
+            <button type="submit" class="btn pri">Speichern</button>
+            <button type="button" class="btn" id="edCancel">Abbrechen</button>
+            <button type="button" class="btn danger" id="edDel" hidden>Löschen</button>
+          </div>
+        </form>
+
+        <div class="backup" id="backup" hidden>
+          <p class="note">Gläser sichern: Code kopieren und z. B. in den Notizen ablegen. Auf einem anderen Gerät hier einfügen und laden.</p>
+          <div class="edbtns">
+            <button type="button" class="btn" id="bkCopy">Code kopieren</button>
+            <button type="button" class="btn" id="bkLoad">Code laden</button>
+          </div>
+          <textarea id="bkIn" rows="2" spellcheck="false" aria-label="Gesicherter Code" placeholder="Gesicherten Code hier einfügen"></textarea>
+          <p class="note" id="bkMsg" aria-live="polite"></p>
+        </div>
+
+        <p class="lbl">Standardfilter</p>
+        <div class="chips" id="chips"></div>
+        <div class="row" id="cRow">
+          <div class="chead">
+            <button class="sw" id="cSw" role="switch" aria-checked="true" aria-label="Eigenen Wert mitrechnen"><i></i></button>
+            <div>
+              <p class="lbl">Eigener Wert <span id="cState">aktiv</span></p>
+              <p class="note">Bleibt gespeichert, auch wenn ausgeschaltet</p>
+            </div>
+          </div>
+          <div class="custom">
+            <button class="step" id="cMinus" aria-label="Eine Drittelstufe weniger">−</button>
+            <label class="cfield"><input id="cIn" type="text" inputmode="decimal" autocomplete="off" aria-label="Eigener Wert in Blendenstufen" value="0"><span>Bl.</span></label>
+            <button class="step" id="cPlus" aria-label="Eine Drittelstufe mehr">+</button>
+            <button class="step clr" id="cClr" aria-label="Eigenen Wert löschen">×</button>
+          </div>
+        </div>
+        <p class="cerr" id="cErr" hidden>Bitte eine Zahl zwischen 0 und 20 eingeben, z. B. 6,5</p>
+      </section>
+    </div>
+
+    <section class="panel result" aria-live="polite">
+      <p class="lbl">Belichtungszeit mit Filter</p>
+      <p class="big" id="out">1/125 s</p>
+      <dl class="facts">
+        <dt>Verlängerung</dt><dd id="fStops">0 Blendenstufen</dd>
+        <dt id="fCustL" hidden>Eigener Wert</dt><dd id="fCust" hidden></dd>
+        <dt>Faktor</dt><dd id="fFactor">1×</dd>
+        <dt>Kamera</dt><dd id="fCam"></dd>
+      </dl>
+      <button class="go" id="goBtn">Timer starten</button>
+      <p class="note" id="goNote">Kamera auf Bulb, Auslöser drücken und gleichzeitig Timer starten.</p>
+    </section>
+  </div>
+</div>
+
+<div class="timer" id="timer" hidden role="dialog" aria-label="Belichtungstimer">
+  <div class="tbox">
+    <p class="lbl" id="tLabel">Belichtung läuft</p>
+    <div class="count" id="tCount">0:00</div>
+    <div class="bar"><i id="tBar"></i></div>
+    <p class="note" id="tTotal"></p>
+    <div class="tbtns">
+      <button id="tPause">Pause</button>
+      <button class="stop" id="tStop">Stopp</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const SPEEDS = ["1/8000","1/6400","1/5000","1/4000","1/3200","1/2500","1/2000","1/1600","1/1250","1/1000","1/800","1/640","1/500","1/400","1/320","1/250","1/200","1/160","1/125","1/100","1/80","1/60","1/50","1/40","1/30","1/25","1/20","1/15","1/13","1/10","1/8","1/6","1/5","1/4","0.3","0.4","0.5","0.6","0.8","1","1.3","1.6","2","2.5","3.2","4","5","6","8","10","13","15","20","25","30"];
+  const val = s => s.includes("/") ? 1 / Number(s.split("/")[1]) : Number(s);
+  const SV = SPEEDS.map(val);
+  const lab = s => s.replace(".", ",");
+
+  const FILTERS = [
+    {id:"cpl", name:"Pol", f:Math.pow(2,1.5), od:"≈0.45"},
+    {id:"nd2", name:"ND2", f:2, od:"0.3"},
+    {id:"nd4", name:"ND4", f:4, od:"0.6"},
+    {id:"nd8", name:"ND8", f:8, od:"0.9"},
+    {id:"nd16", name:"ND16", f:16, od:"1.2"},
+    {id:"nd32", name:"ND32", f:32, od:"1.5"},
+    {id:"nd64", name:"ND64", f:64, od:"1.8"},
+    {id:"nd400", name:"ND400", f:400, od:"2.6"},
+    {id:"nd1000", name:"ND1000", f:1000, od:"3.0"},
+    {id:"nd32k", name:"ND32000", f:32000, od:"4.5"},
+    {id:"nd64k", name:"ND64000", f:64000, od:"4.8"}
+  ];
+  const fmtNum = (n, d=1) => {
+    const r = Math.round(n * 10**d) / 10**d;
+    return String(r).replace(".", ",");
+  };
+  const stopsOf = f => Math.log2(f);
+
+  const state = { idx: 18, sel: [], custom: 0, customOn: true, mine: [] };
+  try {
+    const s = JSON.parse(localStorage.getItem("nd-rechner") || "null");
+    if (s && Number.isInteger(s.idx)) Object.assign(state, s);
+    if (!Array.isArray(state.mine)) state.mine = [];
+  } catch (e) {}
+  const save = () => { try { localStorage.setItem("nd-rechner", JSON.stringify(state)); } catch (e) {} };
+
+  const $ = id => document.getElementById(id);
+  const chips = $("chips");
+  FILTERS.forEach(F => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.id = "chip-" + F.id;
+    const st = stopsOf(F.f);
+    b.innerHTML = `<b>${F.name}</b><span>${Math.abs(st - Math.round(st)) < 0.05 ? Math.round(st) : fmtNum(st)} Bl. · ${F.od}</span>`;
+    b.addEventListener("click", () => toggle(F.id));
+    chips.appendChild(b);
+  });
+  function toggle(id) {
+    const i = state.sel.indexOf(id);
+    i >= 0 ? state.sel.splice(i, 1) : state.sel.push(id);
+    update();
+  }
+
+  // Meine Gläser
+  let editing = false, editId = null, delArm = false;
+  function renderMine() {
+    const box = $("mine");
+    box.innerHTML = "";
+    box.classList.toggle("editing", editing);
+    state.mine.forEach(m => {
+      const b = document.createElement("button");
+      b.className = "chip mine"; b.dataset.id = m.id;
+      b.innerHTML = "<b></b><span></span>";
+      b.querySelector("b").textContent = m.name;
+      b.querySelector("span").textContent = fmtNum(m.st, 2) + " Bl." + (editing ? " · ändern" : "");
+      b.onclick = () => editing ? openEditor(m.id) : toggle(m.id);
+      box.appendChild(b);
+    });
+    const add = document.createElement("button");
+    add.className = "chip add";
+    add.innerHTML = "<b>+ Glas</b><span>eigenen Filter</span>";
+    add.onclick = () => openEditor(null);
+    box.appendChild(add);
+  }
+  function openEditor(id) {
+    editId = id; delArm = false;
+    const m = state.mine.find(x => x.id === id);
+    $("edTitle").textContent = m ? "Glas ändern" : "Neues Glas";
+    $("edName").value = m ? m.name : "";
+    $("edSt").value = m ? fmtNum(m.st, 2) : "";
+    $("edDel").hidden = !m; $("edDel").textContent = "Löschen";
+    $("edErr").hidden = true;
+    $("editor").hidden = false;
+    $("editor").scrollIntoView({ block: "nearest", behavior: "smooth" });
+    $("edName").focus();
+  }
+  const closeEditor = () => { $("editor").hidden = true; editId = null; };
+  function parseStops(raw) {
+    const v = Number(String(raw).trim().replace(/^nd/i, "").replace(",", "."));
+    if (!isFinite(v) || v <= 0) return null;
+    const st = v > 20 ? Math.log2(v) : v;
+    return st > 24 ? null : Math.round(st * 100) / 100;
+  }
+  $("editor").addEventListener("submit", e => {
+    e.preventDefault();
+    const st = parseStops($("edSt").value);
+    if (st === null) {
+      $("edErr").textContent = "Bitte Stufen (z. B. 10,3) oder eine ND-Zahl (z. B. 1000) eintragen.";
+      $("edErr").hidden = false; $("edSt").focus(); return;
+    }
+    const name = $("edName").value.trim() || "Glas " + (state.mine.length + 1);
+    const m = state.mine.find(x => x.id === editId);
+    if (m) { m.name = name; m.st = st; }
+    else {
+      const id = "m" + Date.now().toString(36);
+      state.mine.push({ id, name, st });
+      state.sel.push(id);
+    }
+    closeEditor(); renderMine(); update();
+  });
+  $("edCancel").onclick = closeEditor;
+  $("edDel").onclick = () => {
+    if (!delArm) { delArm = true; $("edDel").textContent = "Wirklich löschen?"; return; }
+    state.mine = state.mine.filter(x => x.id !== editId);
+    state.sel = state.sel.filter(x => x !== editId);
+    closeEditor(); renderMine(); update();
+  };
+  $("editBtn").onclick = () => {
+    editing = !editing;
+    $("editBtn").setAttribute("aria-pressed", editing);
+    $("editBtn").textContent = editing ? "Fertig" : "Bearbeiten";
+    $("backup").hidden = !editing; $("bkMsg").textContent = "";
+    if (!editing) closeEditor();
+    renderMine(); update();
+  };
+  const backupCode = () => JSON.stringify(state.mine.map(m => ({ n: m.name, s: m.st })));
+  $("bkCopy").onclick = () => {
+    const code = backupCode();
+    const fallback = () => { $("bkIn").value = code; $("bkIn").select(); $("bkMsg").textContent = "Code steht im Feld und ist markiert. Bitte selbst kopieren."; };
+    try {
+      navigator.clipboard.writeText(code).then(() => { $("bkMsg").textContent = "Code kopiert (" + state.mine.length + " Gläser)."; }, fallback);
+    } catch (e) { fallback(); }
+  };
+  $("bkLoad").onclick = () => {
+    let list;
+    try { list = JSON.parse($("bkIn").value); } catch (e) { list = null; }
+    if (!Array.isArray(list) || !list.every(x => x && typeof x.n === "string" && parseStops(x.s) !== null)) {
+      $("bkMsg").textContent = "Der Code ist ungültig. Bitte den ganzen Text einfügen, beginnend mit [ und endend mit ].";
+      return;
+    }
+    let added = 0, changed = 0;
+    list.forEach((x, i) => {
+      const name = x.n.trim().slice(0, 16) || "Glas";
+      const ex = state.mine.find(m => m.name === name);
+      if (ex) { ex.st = parseStops(x.s); changed++; }
+      else { state.mine.push({ id: "m" + Date.now().toString(36) + i, name, st: parseStops(x.s) }); added++; }
+    });
+    $("bkMsg").textContent = `${added} Gläser hinzugefügt, ${changed} aktualisiert.`;
+    $("bkIn").value = "";
+    renderMine(); update();
+  };
+
+  function formatTime(t) {
+    if (t < 1) {
+      const d = 1 / t;
+      return "1/" + (d >= 100 ? Math.round(d / 5) * 5 : Math.round(d)) + " s";
+    }
+    if (t < 10) return fmtNum(t) + " s";
+    if (t < 60) return Math.round(t) + " s";
+    const r = Math.round(t);
+    if (r < 3600) return Math.floor(r / 60) + " min " + String(r % 60).padStart(2, "0") + " s";
+    return Math.floor(r / 3600) + " h " + String(Math.floor(r % 3600 / 60)).padStart(2, "0") + " min";
+  }
+  // Countdown rundet auf (zeigt nie 0 vor dem Ende), Anzeige im Knopf rundet normal
+  const clock = (sec, round) => {
+    sec = Math.max(0, round ? Math.round(sec) : Math.ceil(sec));
+    const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0");
+  };
+  function nearestCam(t) {
+    if (t > 30 * 1.12) return null;
+    let best = 0, bd = Infinity;
+    SV.forEach((v, i) => { const d = Math.abs(Math.log2(t / v)); if (d < bd) { bd = d; best = i; } });
+    return { label: SPEEDS[best], off: Math.log2(t / SV[best]) };
+  }
+
+  let current = SV[state.idx];
+  function update() {
+    const base = SV[state.idx];
+    $("speedVal").innerHTML = lab(SPEEDS[state.idx]) + "<small>s</small>";
+    $("speedRange").value = state.idx;
+    const useCustom = state.customOn && state.custom > 0;
+    let stops = useCustom ? state.custom : 0;
+    $("cSw").setAttribute("aria-checked", state.customOn);
+    $("cRow").classList.toggle("off", !state.customOn);
+    $("cState").textContent = state.customOn ? "aktiv" : "aus";
+    $("fCustL").hidden = $("fCust").hidden = !useCustom;
+    $("fCust").innerHTML = '<span class="warn">+' + fmtNum(state.custom, 2) + " Bl. eingerechnet</span>";
+    FILTERS.forEach(F => {
+      const on = state.sel.includes(F.id);
+      $("chip-" + F.id).setAttribute("aria-pressed", on);
+      if (on) stops += stopsOf(F.f);
+    });
+    state.sel = state.sel.filter(id => FILTERS.some(F => F.id === id) || state.mine.some(m => m.id === id));
+    state.mine.forEach(m => {
+      const on = state.sel.includes(m.id);
+      const b = document.querySelector(`#mine [data-id="${m.id}"]`);
+      if (b) b.setAttribute("aria-pressed", on);
+      if (on) stops += m.st;
+    });
+    if (document.activeElement !== $("cIn")) {
+      $("cIn").value = fmtNum(state.custom, 2);
+      $("cIn").setAttribute("aria-invalid", "false"); $("cErr").hidden = true;
+    }
+    $("cClr").disabled = state.custom === 0;
+    const factor = Math.pow(2, stops);
+    current = base * factor;
+    $("out").textContent = formatTime(current);
+    $("fStops").textContent = "+" + fmtNum(stops) + " Blendenstufen";
+    $("fFactor").textContent = (factor < 100 ? fmtNum(factor) : Math.round(factor).toLocaleString("de-CH")) + "×";
+    const cam = nearestCam(current);
+    if (cam) {
+      const off = Math.abs(cam.off) > 0.17 ? ` (${cam.off > 0 ? "+" : "−"}${fmtNum(Math.abs(cam.off))} Bl.)` : "";
+      $("fCam").textContent = lab(cam.label) + " s einstellen" + off;
+    } else {
+      $("fCam").innerHTML = '<span class="tag">Bulb</span> über 30 s';
+    }
+    const go = $("goBtn");
+    go.disabled = current < 1;
+    go.textContent = current < 1 ? "Kein Timer nötig" : "Timer starten · " + clock(current, true);
+    $("goNote").textContent = current < 1 ? "Die Kamera belichtet diese Zeit selbst."
+      : cam ? "Die Kamera schafft das selbst. Timer nur zur Kontrolle."
+      : "Kamera auf Bulb, Auslöser drücken und gleichzeitig Timer starten.";
+    save();
+  }
+
+  $("minus").onclick = () => { if (state.idx > 0) { state.idx--; update(); } };
+  $("plus").onclick = () => { if (state.idx < SPEEDS.length - 1) { state.idx++; update(); } };
+  $("speedRange").max = SPEEDS.length - 1;
+  $("speedRange").oninput = e => { state.idx = Number(e.target.value); update(); };
+  // ± springt zur nächsten Drittelstufe, auch von einem eingetippten Zwischenwert aus
+  // Wer den Wert ändert, will ihn auch nutzen: ± und Eingabe schalten ihn ein
+  $("cMinus").onclick = () => { state.custom = Math.max(0, Math.ceil(state.custom * 3 - 1.001) / 3); state.customOn = true; update(); };
+  $("cPlus").onclick = () => { state.custom = Math.min(20, Math.floor(state.custom * 3 + 1.001) / 3); state.customOn = true; update(); };
+  $("cClr").onclick = () => { state.custom = 0; update(); };
+  $("cSw").onclick = () => { state.customOn = !state.customOn; update(); };
+  $("cIn").addEventListener("input", e => {
+    const raw = e.target.value.trim().replace(",", ".");
+    const v = raw === "" ? 0 : Number(raw);
+    const ok = /^\d*\.?\d*$/.test(raw) && isFinite(v) && v >= 0 && v <= 20;
+    e.target.setAttribute("aria-invalid", !ok); $("cErr").hidden = ok;
+    if (ok) { state.custom = v; state.customOn = true; update(); }
+  });
+  $("cIn").addEventListener("focus", e => e.target.select());
+  $("cIn").addEventListener("blur", update);
+  $("cIn").addEventListener("keydown", e => { if (e.key === "Enter") e.target.blur(); });
+  // „Alle ab“ schaltet den eigenen Wert nur aus, der gemerkte Wert bleibt
+  $("clearBtn").onclick = () => { state.sel = []; state.customOn = false; update(); };
+
+  function setNight(on) {
+    document.body.classList.toggle("night", on);
+    $("nightBtn").setAttribute("aria-pressed", on);
+    try { localStorage.setItem("nd-night", on ? "1" : "0"); } catch (e) {}
+  }
+  $("nightBtn").onclick = () => setNight(!document.body.classList.contains("night"));
+
+  // Timer
+  let ac = null, lock = null, total = 0, endAt = 0, remainPaused = null, raf = 0, lastSec = null, finished = false;
+  function beep(freq, dur) {
+    if (!ac) return;
+    try {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.frequency.value = freq; o.type = "square"; g.gain.value = 0.15;
+      o.connect(g); g.connect(ac.destination);
+      o.start(); o.stop(ac.currentTime + dur);
+    } catch (e) {}
+  }
+  async function wake(on) {
+    try {
+      if (on && "wakeLock" in navigator) lock = await navigator.wakeLock.request("screen");
+      else if (!on && lock) { await lock.release(); lock = null; }
+    } catch (e) {}
+  }
+  function tick() {
+    const rem = remainPaused !== null ? remainPaused : (endAt - performance.now()) / 1000;
+    $("tCount").textContent = clock(rem);
+    $("tBar").style.width = Math.min(100, (1 - rem / total) * 100) + "%";
+    const sec = Math.ceil(rem);
+    if (remainPaused === null && sec !== lastSec) {
+      if (sec <= 3 && sec > 0) beep(880, 0.08);
+      lastSec = sec;
+    }
+    if (rem <= 0 && !finished) {
+      finished = true;
+      beep(1320, 0.6);
+      try { navigator.vibrate && navigator.vibrate([400, 150, 400]); } catch (e) {}
+      $("timer").classList.add("done");
+      $("tLabel").textContent = "Fertig. Auslöser loslassen";
+      $("tPause").hidden = true;
+      $("tStop").textContent = "Schliessen";
+      return;
+    }
+    raf = requestAnimationFrame(tick);
+  }
+  $("goBtn").onclick = () => {
+    try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); ac.resume && ac.resume(); } catch (e) {}
+    total = current; endAt = performance.now() + total * 1000;
+    remainPaused = null; lastSec = null; finished = false;
+    $("timer").classList.remove("done");
+    $("tLabel").textContent = "Belichtung läuft";
+    $("tTotal").textContent = "Gesamt " + formatTime(total);
+    $("tPause").hidden = false; $("tPause").textContent = "Pause";
+    $("tStop").textContent = "Stopp";
+    $("timer").hidden = false;
+    wake(true); beep(660, 0.1);
+    cancelAnimationFrame(raf); raf = requestAnimationFrame(tick);
+  };
+  $("tPause").onclick = () => {
+    if (remainPaused === null) { remainPaused = (endAt - performance.now()) / 1000; $("tPause").textContent = "Weiter"; }
+    else { endAt = performance.now() + remainPaused * 1000; remainPaused = null; $("tPause").textContent = "Pause"; }
+  };
+  $("tStop").onclick = () => { cancelAnimationFrame(raf); $("timer").hidden = true; wake(false); };
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && !$("timer").hidden) wake(true); });
+
+  try { if (localStorage.getItem("nd-night") === "1") setNight(true); } catch (e) {}
+  renderMine();
+  update();
+})();
+</script>
+<script>
+// Offline-Fähigkeit und dauerhafter Speicher für "Meine Gläser"
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+</script>
+</body>
+</html>
